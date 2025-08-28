@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="9.0.0" />
+    <PackageReference Include="System.Management" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- ADEL SDK Files -->
+  <ItemGroup>
+    <None Include="SDK\MAINDLL.DLL" CopyToOutputDirectory="Always" Condition="Exists('SDK\MAINDLL.DLL')" />
+    <None Include="SDK\*.dll" CopyToOutputDirectory="Always" Condition="Exists('SDK\')" />
+  </ItemGroup>
+
+  <!-- Alternative: Copy from root directory if SDK folder doesn't exist -->
+  <ItemGroup>
+    <None Include="MAINDLL.DLL" CopyToOutputDirectory="Always" Condition="Exists('MAINDLL.DLL')" />
+  </ItemGroup>
+
+</Project>
