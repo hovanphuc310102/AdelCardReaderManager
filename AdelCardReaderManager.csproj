@@ -6,22 +6,26 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Force 32-bit architecture to match MAINDLL.DLL -->
+    <PlatformTarget>x86</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.0" />
     <PackageReference Include="System.IO.Ports" Version="9.0.0" />
     <PackageReference Include="System.Management" Version="9.0.0" />
+    <PackageReference Include="System.Text.Encoding" Version="4.3.0" />
   </ItemGroup>
 
-  <!-- ADEL SDK Files -->
+  <!-- ADEL SDK Files - Copy DLL files directly to output directory root -->
   <ItemGroup>
-    <None Include="SDK\MAINDLL.DLL" CopyToOutputDirectory="Always" Condition="Exists('SDK\MAINDLL.DLL')" />
     <None Include="SDK\*.dll" CopyToOutputDirectory="Always" Condition="Exists('SDK\')" />
+    <None Include="SDK\*.DLL" CopyToOutputDirectory="Always" Condition="Exists('SDK\')" />
   </ItemGroup>
 
-  <!-- Alternative: Copy from root directory if SDK folder doesn't exist -->
+  <!-- Alternative: Copy specific DLL files from root directory if they exist -->
   <ItemGroup>
-    <None Include="MAINDLL.DLL" CopyToOutputDirectory="Always" Condition="Exists('MAINDLL.DLL')" />
+    <None Include="*.dll" CopyToOutputDirectory="Always" Condition="Exists('MAINDLL.DLL')" />
   </ItemGroup>
 
 </Project>

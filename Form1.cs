@@ -1,8 +1,21 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
 namespace AdelCardReaderManager;
 
 public partial class Form1 : Form
 {
-    private AdelCardReader cardReader;
+    #region Global Variables
+    private readonly AdelCardReader cardReader;
+    private readonly string[] RequiredDlls = { "MAINDLL.DLL", "RF_USB.dll", "Mifire.dll", "LOCKDLL.dll", "AdelICK.dll" };
+
+    #endregion
 
     public Form1()
     {
@@ -12,860 +25,771 @@ public partial class Form1 : Form
 
     private void Form1_Load(object sender, EventArgs e)
     {
-        // Set default values
-        dtpStartTime.Value = DateTime.Now;
-        dtpEndTime.Value = DateTime.Now.AddDays(1);
-        
-        // Check if MAINDLL.DLL exists
-        CheckDLLExists();
-        
-        // Populate COM ports (including USB virtual COM ports)
-        PopulateComPorts();
-        
-        LogMessage("ADEL Card Reader Manager started");
-        LogMessage("Please initialize the card reader first");
-        LogMessage("Note: USB card readers appear as virtual COM ports (e.g., COM3, COM4, etc.)");
+        CheckDLLDependencies();
+        LogMessage("ADEL Card Reader Manager - Multiple ReadCard Functions Test");
+        LogMessage("Using USB HID connection (Port 0)");
+        LogMessage("Click 'Initialize USB' to connect to your card reader");
+        LogMessage("Then test individual ReadCard functions with the buttons on the right");
     }
 
-    private void CheckDLLExists()
+    #region DLL Management
+    private void CheckDLLDependencies()
     {
-        string dllPath = Path.Combine(Application.StartupPath, "MAINDLL.DLL");
-        if (File.Exists(dllPath))
+        LogMessage("Checking DLL dependencies...");
+        
+        foreach (var dll in RequiredDlls)
         {
-            LogMessage("? MAINDLL.DLL found in application directory");
-            
-            // Try to get additional DLL information
-            try
-            {
-                var fileInfo = new FileInfo(dllPath);
-                LogMessage($"  File size: {fileInfo.Length:N0} bytes");
-                LogMessage($"  Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}");
-                
-                // Check if we can load the DLL (basic test)
-                var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(dllPath);
-                if (!string.IsNullOrEmpty(versionInfo.FileVersion))
-                {
-                    LogMessage($"  Version: {versionInfo.FileVersion}");
-                }
-                if (!string.IsNullOrEmpty(versionInfo.FileDescription))
-                {
-                    LogMessage($"  Description: {versionInfo.FileDescription}");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"  ? Could not read DLL details: {ex.Message}");
-            }
+            CheckSingleDLL(dll, dll == "MAINDLL.DLL");
+        }
+        
+        int foundCount = RequiredDlls.Skip(1).Count(dll => File.Exists(Path.Combine(Application.StartupPath, dll)));
+        LogMessage($"SDK Dependencies: {foundCount}/{RequiredDlls.Length - 1} found");
+        
+        if (foundCount < RequiredDlls.Length - 1)
+        {
+            LogMessage("⚠ Some SDK dependencies are missing!");
+            LogMessage("Copy ALL DLL files from your ADEL app installation to:");
+            LogMessage($"  📁 {Application.StartupPath}");
         }
         else
         {
-            LogMessage("? WARNING: MAINDLL.DLL not found!");
-            LogMessage("Please copy MAINDLL.DLL to the application directory:");
-            LogMessage($"  ?? {Application.StartupPath}");
-            LogMessage("");
-            LogMessage("SDK Setup Instructions:");
-            LogMessage("1. Create 'SDK' folder in your project directory");
-            LogMessage("2. Copy MAINDLL.DLL from ADEL SDK to the SDK folder");
-            LogMessage("3. Rebuild your project");
-            LogMessage("4. The DLL will be automatically copied to output directory");
-            LogMessage("");
-            LogMessage("Alternative: Copy MAINDLL.DLL directly to:");
-            LogMessage($"  ?? {Application.StartupPath}");
-            LogMessage("");
-            LogMessage("The SDK will not work without this file.");
-            LogMessage("?? See SDK_SETUP.md for detailed instructions");
+            LogMessage("✓ All essential SDK dependencies found!");
         }
     }
 
-    private void PopulateComPorts()
+    private void CheckSingleDLL(string dllName, bool isMainDll)
     {
-        try
-        {
-            // Clear existing items
-            cmbComPort.Items.Clear();
-            
-            LogMessage("Detecting COM ports...");
-            
-            // Get all available COM ports (including USB virtual COM ports)
-            string[] availablePorts = System.IO.Ports.SerialPort.GetPortNames();
-            
-            LogMessage($"System.IO.Ports.SerialPort.GetPortNames() returned {availablePorts.Length} ports");
-            
-            if (availablePorts.Length > 0)
-            {
-                Array.Sort(availablePorts); // Sort them numerically
-                cmbComPort.Items.AddRange(availablePorts);
-                cmbComPort.SelectedIndex = 0;
-                LogMessage($"? Found {availablePorts.Length} COM port(s): {string.Join(", ", availablePorts)}");
-                
-                // Try to detect USB card readers
-                // DetectUSBCardReaders(availablePorts); // Temporarily commented out
-            }
-            else
-            {
-                LogMessage("? No COM ports detected by .NET SerialPort.GetPortNames()");
-                
-                // Try alternative detection methods
-                TryAlternativePortDetection();
-                
-                // Add default ports if none detected
-                cmbComPort.Items.AddRange(new object[] { "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8" });
-                cmbComPort.SelectedIndex = 0;
-                LogMessage("Using default COM port list (COM1-COM8)");
-                LogMessage("If using USB card reader, please:");
-                LogMessage("  1. Install the USB-to-Serial driver");
-                LogMessage("  2. Check Device Manager for COM ports");
-                LogMessage("  3. Try running as Administrator");
-                LogMessage("  4. Check if card reader is properly connected");
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? Error detecting COM ports: {ex.Message}");
-            LogMessage($"Exception type: {ex.GetType().Name}");
-            
-            // Try alternative detection if main method fails
-            TryAlternativePortDetection();
-            
-            // Fallback to default ports
-            if (cmbComPort.Items.Count == 0)
-            {
-                cmbComPort.Items.AddRange(new object[] { "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8" });
-                cmbComPort.SelectedIndex = 0;
-                LogMessage("Using fallback COM port list");
-            }
-        }
-    }
-
-    private void DetectUSBCardReaders(string[] comPorts)
-    {
-        try
-        {
-            LogMessage("Analyzing COM ports for USB card readers...");
-            
-            // Try to detect which COM ports might be USB card readers
-            // This is done by checking Windows Management Instrumentation (WMI)
-            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT * FROM Win32_SerialPort"))
-            {
-                bool foundAnyUSB = false;
-                foreach (System.Management.ManagementObject port in searcher.Get())
-                {
-                    string deviceId = port["DeviceID"]?.ToString() ?? "";
-                    string description = port["Description"]?.ToString() ?? "";
-                    string name = port["Name"]?.ToString() ?? "";
-                    string pnpDeviceId = port["PNPDeviceID"]?.ToString() ?? "";
-                    
-                    // Check if this looks like a USB card reader
-                    if (description.ToLower().Contains("usb") || 
-                        description.ToLower().Contains("card") ||
-                        description.ToLower().Contains("adel") ||
-                        name.ToLower().Contains("usb") ||
-                        pnpDeviceId.ToLower().Contains("usb"))
-                    {
-                        LogMessage($"  ?? {deviceId}: {description} (Possible USB card reader)");
-                        if (!string.IsNullOrEmpty(pnpDeviceId))
-                            LogMessage($"      PnP ID: {pnpDeviceId}");
-                        foundAnyUSB = true;
-                    }
-                    else if (comPorts.Contains(deviceId))
-                    {
-                        LogMessage($"  ?? {deviceId}: {description}");
-                    }
-                }
-                
-                if (!foundAnyUSB && comPorts.Length > 0)
-                {
-                    LogMessage("  ? No obvious USB card readers detected, but COM ports are available");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            // WMI query failed, not critical
-            LogMessage($"? Could not query USB devices via WMI: {ex.Message}");
-            LogMessage("  This might be due to insufficient permissions or WMI service issues");
-        }
-    }
-
-    private void TryAlternativePortDetection()
-    {
-        try
-        {
-            LogMessage("Trying alternative COM port detection via Registry...");
-            
-            // Try to read COM ports from Windows Registry
-            using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"HARDWARE\DEVICEMAP\SERIALCOMM"))
-            {
-                if (key != null)
-                {
-                    var ports = new List<string>();
-                    foreach (string valueName in key.GetValueNames())
-                    {
-                        string? portName = key.GetValue(valueName)?.ToString();
-                        if (!string.IsNullOrEmpty(portName) && portName.StartsWith("COM"))
-                        {
-                            ports.Add(portName);
-                        }
-                    }
-                    
-                    if (ports.Count > 0)
-                    {
-                        ports.Sort();
-                        LogMessage($"? Registry found {ports.Count} COM port(s): {string.Join(", ", ports)}");
-                        
-                        if (cmbComPort.Items.Count == 0)
-                        {
-                            cmbComPort.Items.AddRange(ports.ToArray());
-                            cmbComPort.SelectedIndex = 0;
-                        }
-                        return;
-                    }
-                }
-            }
-            
-            LogMessage("? No COM ports found in Registry");
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? Registry COM port detection failed: {ex.Message}");
-        }
+        string dllPath = Path.Combine(Application.StartupPath, dllName);
         
-        // Try WMI-based detection as another alternative
-        TryWMIPortDetection();
+        if (File.Exists(dllPath))
+        {
+            LogMessage($"✓ {dllName} found");
+            if (isMainDll) LogDLLDetails(dllPath);
+        }
+        else
+        {
+            LogMessage(isMainDll ? $"⚠ WARNING: {dllName} not found!" : $"⚠ {dllName} not found");
+        }
     }
 
-    private void TryWMIPortDetection()
+    private void LogDLLDetails(string dllPath)
     {
         try
         {
-            LogMessage("Trying WMI-based COM port detection...");
+            var fileInfo = new FileInfo(dllPath);
+            LogMessage($"  Size: {fileInfo.Length:N0} bytes");
+            LogMessage($"  Modified: {fileInfo.LastWriteTime:yyyy-MM-dd HH:mm:ss}");
             
-            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT * FROM Win32_SerialPort"))
+            try
             {
-                var ports = new List<string>();
-                foreach (System.Management.ManagementObject port in searcher.Get())
-                {
-                    string deviceId = port["DeviceID"]?.ToString() ?? "";
-                    if (!string.IsNullOrEmpty(deviceId) && deviceId.StartsWith("COM"))
-                    {
-                        ports.Add(deviceId);
-                    }
-                }
-                
-                if (ports.Count > 0)
-                {
-                    ports.Sort();
-                    LogMessage($"? WMI found {ports.Count} COM port(s): {string.Join(", ", ports)}");
-                    
-                    if (cmbComPort.Items.Count == 0)
-                    {
-                        cmbComPort.Items.AddRange(ports.ToArray());
-                        cmbComPort.SelectedIndex = 0;
-                    }
-                }
-                else
-                {
-                    LogMessage("? No COM ports found via WMI");
-                }
+                var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(dllPath);
+                LogMessage($"  File Version: {versionInfo.FileVersion}");
+                LogMessage($"  Product Version: {versionInfo.ProductVersion}");
+                LogMessage($"  Description: {versionInfo.FileDescription}");
+                LogMessage($"  Company: {versionInfo.CompanyName}");
             }
+            catch { LogMessage("  Version info not available"); }
         }
-        catch (Exception ex)
-        {
-            LogMessage($"? WMI COM port detection failed: {ex.Message}");
-        }
+        catch (Exception ex) { LogMessage($"  ⚠ Could not read DLL details: {ex.Message}"); }
     }
+    #endregion
 
+    #region Initialization
     private void btnInitialize_Click(object sender, EventArgs e)
     {
         try
         {
-            // Extract COM port number from selection (e.g., "COM3" -> 3)
-            string selectedPort = cmbComPort.SelectedItem?.ToString() ?? "COM1";
-            int comPort = ExtractComPortNumber(selectedPort);
+            if (!TestDLLLoading()) return;
+            
             int lockSystem = GetSelectedLockSystem();
+            LogMessage($"Initializing USB HID card reader with {cmbLockSystem.SelectedItem} (Code: {lockSystem})");
+            LogMessage("Using SetPort() for hardware-only operations (no database)");
 
-            LogMessage($"Initializing card reader...");
-            LogMessage($"COM Port: {selectedPort} (Port Number: {comPort})");
-            LogMessage($"Lock System: {cmbLockSystem.SelectedItem}");
-
-            // Try standalone initialization first (no database connection required)
-            bool success = cardReader.InitializeStandalone(lockSystem, comPort, AdelCardReader.AUTO_ENCODER, 1);
-
-            if (success)
+            // Use SetPort method for hardware-only initialization
+            var (successSetPort, errorCodeSetPort, errorMessageSetPort) = 
+                cardReader.InitializeStandaloneWithDetails(lockSystem, 0, AdelCardReader.AUTO_ENCODER, 1);
+            
+            LogMessage($"SetPort() returned: {errorCodeSetPort} - {errorMessageSetPort}");
+            
+            if (successSetPort)
             {
-                LogMessage("? Card reader initialized successfully");
-                lblStatus.Text = "Status: Connected";
-                lblStatus.ForeColor = Color.Green;
+                LogMessage("✓ Card reader initialized successfully via SetPort() - Hardware Only");
+                LogMessage("ℹ️ Note: This allows ReadCard, ReadCardId, ReadMagCard, ReadIC, Reader_Beep");
+                LogMessage("ℹ️ For GetCardInfo (database function), use 'Init with Database' button");
+                UpdateStatus("Connected (USB HID - Hardware Only)", Color.Green);
                 EnableCardOperations(true);
             }
             else
             {
-                LogMessage("? Failed to initialize card reader");
-                LogMessage("Please check:");
-                LogMessage("- MAINDLL.DLL is in the application directory");
-                LogMessage($"- Card reader is connected to {selectedPort}");
-                LogMessage("- USB drivers are installed (for USB card readers)");
-                LogMessage("- No other application is using the COM port");
-                LogMessage("- Try different COM port if unsure");
-                lblStatus.Text = "Status: Connection failed";
-                lblStatus.ForeColor = Color.Red;
+                LogMessage($"✗ SetPort() failed with error {errorCodeSetPort}");
+                UpdateStatus($"Error {errorCodeSetPort}", Color.Red);
                 EnableCardOperations(false);
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"? Error during initialization: {ex.Message}");
-            lblStatus.Text = "Status: Error";
-            lblStatus.ForeColor = Color.Red;
-            EnableCardOperations(false);
+            HandleException("initialization", ex);
         }
     }
 
-    private int ExtractComPortNumber(string comPortName)
+    // Add new button handler for database initialization
+    private void btnInitWithDatabase_Click(object sender, EventArgs e)
     {
         try
         {
-            // Extract number from "COM3" -> 3
-            string numberPart = comPortName.Replace("COM", "").Trim();
-            return int.Parse(numberPart);
-        }
-        catch
-        {
-            return 1; // Default to COM1 if parsing fails
-        }
-    }
+            if (!TestDLLLoading()) return;
+            
+            int lockSystem = GetSelectedLockSystem();
+            LogMessage($"Initializing with DATABASE connection using {cmbLockSystem.SelectedItem} (Code: {lockSystem})");
+            LogMessage("Using Init() for full database access");
+            LogMessage("Server: DESKTOP-ILHONN0, User: DESKTOP-ILHONN0, Port: 0, Manual Encoder");
 
-    private void btnReadCard_Click(object sender, EventArgs e)
-    {
-        try
-        {
-            LogMessage("Reading card...");
+            // Use Init method for database initialization
+            var (successInit, errorCodeInit, errorMessageInit) = 
+                cardReader.InitializeWithDatabaseDetails(lockSystem, "DESKTOP-ILHONN0", "system", 0, AdelCardReader.AUTO_ENCODER, 1);
             
-            var cardInfo = cardReader.ReadCardInfo();
+            LogMessage($"Init() returned: {errorCodeInit} - {errorMessageInit}");
             
-            if (cardInfo != null)
+            if (successInit)
             {
-                LogMessage("? Card read successfully:");
-                LogMessage($"  Room: {cardInfo.Room}");
-                LogMessage($"  Guest: {cardInfo.GuestName}");
-                LogMessage($"  Guest ID: {cardInfo.GuestId}");
-                LogMessage($"  Card Number: {cardInfo.CardNumber}");
-                LogMessage($"  Valid From: {cardInfo.StartTime}");
-                LogMessage($"  Valid Until: {cardInfo.EndTime}");
-                LogMessage($"  Status: {GetCardStatusDescription(cardInfo.Status)}");
-                LogMessage($"  Public Channels: {cardInfo.Gate}");
-                
-                if (!string.IsNullOrEmpty(cardInfo.Track1))
-                    LogMessage($"  Track 1: {cardInfo.Track1}");
-                if (!string.IsNullOrEmpty(cardInfo.Track2))
-                    LogMessage($"  Track 2: {cardInfo.Track2}");
-
-                // Update form fields with read data
-                txtRoomNumber.Text = cardInfo.Room;
-                txtGuestName.Text = cardInfo.GuestName;
-                txtGuestId.Text = cardInfo.GuestId;
+                LogMessage("✓ Card reader initialized successfully via Init() - Full Database Access");
+                LogMessage("✓ All functions available: ReadCard, ReadCardId, ReadMagCard, ReadIC, GetCardInfo, Reader_Beep");
+                UpdateStatus("Connected (Full Database Access)", Color.Green);
+                EnableCardOperations(true);
             }
             else
             {
-                LogMessage("? No card detected or unable to read card");
-                LogMessage("Please ensure a card is properly positioned in the reader");
+                LogMessage($"✗ Init() failed with error {errorCodeInit}");
+                if (errorCodeInit == 22)
+                {
+                    LogMessage("Database connection failed - check SQL Server status");
+                }
+                else if (errorCodeInit == 33)
+                {
+                    LogMessage("SQL Server connection issue");
+                }
+                else if (errorCodeInit == 14)
+                {
+                    LogMessage("Parameter error - check server name or username");
+                }
+                UpdateStatus($"Database Error {errorCodeInit}", Color.Red);
+                EnableCardOperations(false);
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"? Error reading card: {ex.Message}");
+            HandleException("database initialization", ex);
         }
     }
 
+    private bool TestDLLLoading()
+    {
+        var (canLoad, dllError) = AdelCardReader.TestDllLoading();
+        if (!canLoad)
+        {
+            LogMessage($"✗ DLL Loading Failed: {dllError}");
+            UpdateStatus("DLL Error", Color.Red);
+            return false;
+        }
+        LogMessage("✓ MAINDLL.DLL loaded successfully");
+        return true;
+    }
+    #endregion
+
+    #region Card Reading Tests - Individual Function Buttons
+
+    // Test 1: Standard ReadCard
+    private void btnReadCard_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("🃏 TEST 1: STANDARD READCARD FUNCTION");
+            LogMessage("Testing ReadCard(room, gate, stime, guestname, guestid, track1, track2, cardno, status)");
+            
+            var (readSuccess, cardInfo, errorCode, readDetails) = cardReader.TestCardReading();
+            LogMessage($"ReadCard Test: {readDetails}");
+            
+            if (readSuccess && cardInfo != null)
+            {
+                LogMessage("🎉 READCARD SUCCESS!");
+                DisplayCardInfo(cardInfo);
+                UpdateFormFields(cardInfo);
+            }
+            else
+            {
+                LogMessage($"❌ ReadCard failed with error {errorCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("ReadCard test", ex);
+        }
+    }
+
+    // Test 2: ReadCardId
+    private void btnTestReadCardId_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("🆔 TEST 2: READCARDID FUNCTION");
+            LogMessage("Testing ReadCardId(ref cardId)");
+            
+            var (idSuccess, cardId, idDetails) = cardReader.TestCardId();
+            LogMessage($"ReadCardId Test: {idDetails}");
+            
+            if (idSuccess)
+            {
+                LogMessage($"✓ Card ID detected: {cardId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("ReadCardId test", ex);
+        }
+    }
+
+    // Test 3: ReadMagCard
+    private void btnTestReadMagCard_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("🧲 TEST 3: READMAGCARD FUNCTION");
+            LogMessage("Testing ReadMagCard(track1, track2, track3)");
+            
+            var (magSuccess, magCardInfo, errorCode, magDetails) = cardReader.TestReadMagCard();
+            LogMessage($"ReadMagCard Test: {magDetails}");
+            
+            if (magSuccess && magCardInfo != null)
+            {
+                LogMessage("🎉 MAGNETIC CARD READ SUCCESS!");
+                LogMessage($"Track 1: {magCardInfo.Track1}");
+                LogMessage($"Track 2: {magCardInfo.Track2}");
+                LogMessage($"Track 3: {magCardInfo.Track3}");
+            }
+            else
+            {
+                LogMessage($"❌ ReadMagCard failed with error {errorCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("ReadMagCard test", ex);
+        }
+    }
+
+    // Test 4: ReadIC
+    private void btnTestReadIC_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("💾 TEST 4: READIC FUNCTION");
+            LogMessage("Testing ACTUAL ReadIC(startAddress, length, data) from SDK");
+            LogMessage("For IC cards: Lock3200K, Lock4200D, Lock7200D, Adel3200, Adel9200");
+            
+            var (icSuccess, icCardInfo, errorCode, icDetails) = cardReader.TestReadIC(0x00, 16);
+            LogMessage($"ReadIC Test: {icDetails}");
+            
+            if (icSuccess && icCardInfo != null)
+            {
+                LogMessage("🎉 IC CARD READ SUCCESS!");
+                LogMessage($"Data Length: {icCardInfo.Data.Length} bytes");
+                LogMessage($"Hex Data: {Convert.ToHexString(icCardInfo.Data)}");
+            }
+            else
+            {
+                LogMessage($"❌ ReadIC failed with error {errorCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("ReadIC test", ex);
+        }
+    }
+
+    // Test 5: GetCardInfo
+    private void btnTestGetCardInfo_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("📋 TEST 5: GETCARDINFO FUNCTION");
+            LogMessage("Testing ACTUAL GetCardInfo(buffer, length, cardtype, cardstatus, cardno, room, username) from SDK");
+            LogMessage("Network Energy Saver function");
+            
+            var (infoSuccess, cardInfoDetailed, errorCode, infoDetails) = cardReader.TestGetCardInfo();
+            LogMessage($"GetCardInfo Test: {infoDetails}");
+            
+            if (infoSuccess && cardInfoDetailed != null)
+            {
+                LogMessage("🎉 CARD INFO SUCCESS!");
+                LogMessage($"Card Type: {cardInfoDetailed.CardTypeDescription}");
+                LogMessage($"Card Status: {cardInfoDetailed.CardStatusDescription}");
+                LogMessage($"Card Number: {cardInfoDetailed.CardNumber}");
+                LogMessage($"Room: {cardInfoDetailed.RoomNumber}");
+                LogMessage($"User: {cardInfoDetailed.UserName}");
+            }
+            else
+            {
+                LogMessage($"❌ GetCardInfo failed with error {errorCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("GetCardInfo test", ex);
+        }
+    }
+
+    // Test 6: Reader_Beep
+    private async void btnTestReaderBeep_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("🔊 TEST 6: READER_BEEP FUNCTION");
+            LogMessage("Testing ACTUAL Reader_Beep(soundType) from SDK");
+            LogMessage("Available for: Lock9200T, A30, A90, A92");
+            
+            // Test different beep sounds
+            var beepTypes = new[]
+            {
+                (AdelCardReader.BEEP_GREEN_LONG, "Green Long (11)"),
+                (AdelCardReader.BEEP_RED_LONG, "Red Long (12)"),
+                (AdelCardReader.BEEP_RED_SHORT_DOUBLE, "Red Short Double (15)"),
+                (AdelCardReader.BEEP_SHORT_ONE, "Short One (16)")
+            };
+
+            foreach (var (beepType, description) in beepTypes)
+            {
+                LogMessage($"Testing {description} beep...");
+                var (beepSuccess, beepDetails) = cardReader.TestReaderBeep(beepType);
+                LogMessage($"  {beepDetails}");
+                
+                if (beepSuccess)
+                {
+                    LogMessage($"  ✓ {description} beep successful");
+                }
+                else
+                {
+                    LogMessage($"  ❌ {description} beep failed");
+                }
+                
+                // Small delay between beeps
+                await Task.Delay(1000);
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("Reader_Beep test", ex);
+        }
+    }
+    
+    // Direct ReadCard function handler
+    private void btnReadCardDirect_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("?? DIRECT READCARD FUNCTION");
+            LogMessage("Calling SDK's ReadCard() function directly with StringBuilder parameters");
+            
+            // We can only reach this point if the button is enabled, which means initialization was successful
+            StringBuilder room = new StringBuilder(50);
+            StringBuilder gate = new StringBuilder(50);
+            StringBuilder stime = new StringBuilder(50);
+            StringBuilder guestname = new StringBuilder(100);
+            StringBuilder guestid = new StringBuilder(100);
+            StringBuilder track1 = new StringBuilder(200);
+            StringBuilder track2 = new StringBuilder(200);
+            long cardno = 0;
+            int status = 0;
+
+            // Call the ReadCard function directly from the ADEL SDK
+            LogMessage("Placing card on reader and calling ReadCard() function...");
+            int result = AdelCardReader.ReadCard(room, gate, stime, guestname, guestid, track1, track2, ref cardno, ref status);
+            
+            LogMessage($"ReadCard Direct Result: {result} - {AdelCardReader.GetErrorDescription(result)}");
+            
+            if (result == AdelCardReader.SUCCESS)
+            {
+                LogMessage("?? DIRECT READCARD SUCCESS!");
+                LogMessage("Card Information from direct ReadCard call:");
+                LogMessage($"  Room Number: {room}");
+                LogMessage($"  Gate: {gate}");
+                LogMessage($"  Start Time: {stime}");
+                LogMessage($"  Guest Name: {guestname}");
+                LogMessage($"  Guest ID: {guestid}");
+                LogMessage($"  Card Number: {cardno}");
+                LogMessage($"  Status: {GetCardStatusDescription(status)}");
+                LogMessage($"  Track 1: {track1}");
+                LogMessage($"  Track 2: {track2}");
+                
+                // Create sound feedback for success
+                try
+                {
+                    AdelCardReader.Reader_Beep(AdelCardReader.BEEP_GREEN_LONG);
+                }
+                catch
+                {
+                    // Ignore beep errors, not critical
+                }
+                
+                // Update form fields with the card data
+                txtRoomNumber.Text = room.ToString().Trim();
+                txtGuestName.Text = guestname.ToString().Trim();
+                
+                // Set focus to the guest name field for convenience
+                txtGuestName.Focus();
+                txtGuestName.SelectAll();
+            }
+            else
+            {
+                LogMessage($"? Direct ReadCard failed with error {result}");
+                
+                // Create sound feedback for failure
+                try
+                {
+                    AdelCardReader.Reader_Beep(AdelCardReader.BEEP_RED_SHORT_DOUBLE);
+                }
+                catch
+                {
+                    // Ignore beep errors, not critical
+                }
+                
+                LogMessage($"Partial data - Room: '{room}', Guest: '{guestname}', Card#: {cardno}, Status: {status}");
+                
+                // Show specific error messages based on error code
+                switch (result)
+                {
+                    case AdelCardReader.NO_CARD:
+                        LogMessage("No card detected on the reader. Please place a card.");
+                        break;
+                    case AdelCardReader.CARD_DAMAGED:
+                        LogMessage("Card appears to be damaged or unreadable.");
+                        break;
+                    case AdelCardReader.READ_WRITE_ERROR:
+                        LogMessage("Read error occurred. Try repositioning the card.");
+                        break;
+                    case AdelCardReader.NON_SYSTEM_CARD:
+                        LogMessage("This is not a valid system card for this lock system.");
+                        break;
+                    case AdelCardReader.NOT_GUEST_CARD:
+                        LogMessage("This is not a guest card.");
+                        break;
+                    case AdelCardReader.SERIAL_PORT_ERROR:
+                        LogMessage("Serial port error. Check reader connection and try again.");
+                        break;
+                    default:
+                        LogMessage($"Error code {result}: {AdelCardReader.GetErrorDescription(result)}");
+                        break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleException("Direct ReadCard test", ex);
+        }
+    }
+
+    // View JBB Table button click handler
+    private void btnViewJBBTable_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("📊 Opening JBB Table Viewer...");
+            
+            // Test database connection first
+            bool isConnected = DatabaseHelper.TestDatabaseConnection();
+            if (!isConnected)
+            {
+                LogMessage("❌ Database connection failed. Make sure SQL Server is running and the Adel9200 database exists.");
+                MessageBox.Show("Failed to connect to the Adel9200 database. Please check your SQL Server connection.", 
+                    "Database Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            // Open the JBB Table form
+            using (var jbbTableForm = new JBBTableForm())
+            {
+                LogMessage("✓ JBB Table Viewer opened");
+                jbbTableForm.ShowDialog();
+            }
+            
+            LogMessage("✓ JBB Table Viewer closed");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"❌ Error opening JBB Table Viewer: {ex.Message}");
+            MessageBox.Show($"An error occurred while opening the JBB Table Viewer: {ex.Message}", 
+                "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // View XTCS Table button click handler
+    private void btnViewXTCSTable_Click(object sender, EventArgs e)
+    {
+        try
+        {
+            LogMessage("📊 Opening XTCS Table Viewer (Authorization Codes)...");
+            
+            // Test database connection first
+            bool isConnected = DatabaseHelper.TestDatabaseConnection();
+            if (!isConnected)
+            {
+                LogMessage("❌ Database connection failed. Make sure SQL Server is running and the Adel9200 database exists.");
+                MessageBox.Show("Failed to connect to the Adel9200 database. Please check your SQL Server connection.", 
+                    "Database Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            
+            // Open the XTCS Table form
+            using (var xtcsTableForm = new XTCSTableForm())
+            {
+                LogMessage("✓ XTCS Table Viewer opened - This table contains authorization codes");
+                xtcsTableForm.ShowDialog();
+            }
+            
+            LogMessage("✓ XTCS Table Viewer closed");
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"❌ Error opening XTCS Table Viewer: {ex.Message}");
+            MessageBox.Show($"An error occurred while opening the XTCS Table Viewer: {ex.Message}", 
+                "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    #endregion
+
+    #region Original Card Operations
     private void btnCreateCard_Click(object sender, EventArgs e)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(txtRoomNumber.Text))
             {
-                LogMessage("? Please enter a room number");
+                LogMessage("✗ Please enter a room number");
                 return;
             }
 
             string roomNumber = txtRoomNumber.Text.Trim();
             string guestName = txtGuestName.Text.Trim();
-            string guestId = txtGuestId.Text.Trim();
-            DateTime startTime = dtpStartTime.Value;
-            DateTime endTime = dtpEndTime.Value;
+            DateTime startTime = DateTime.Now;
+            DateTime endTime = DateTime.Now.AddDays(1);
 
-            if (endTime <= startTime)
-            {
-                LogMessage("? End time must be after start time");
-                return;
-            }
+            LogMessage($"Creating guest card: Room {roomNumber}, Guest {guestName}");
+            LogMessage($"Valid: {startTime:yyyy-MM-dd HH:mm} to {endTime:yyyy-MM-dd HH:mm}");
 
-            LogMessage($"Creating guest card...");
-            LogMessage($"  Room: {roomNumber}");
-            LogMessage($"  Guest: {guestName}");
-            LogMessage($"  Guest ID: {guestId}");
-            LogMessage($"  Valid from: {startTime:yyyy-MM-dd HH:mm}");
-            LogMessage($"  Valid until: {endTime:yyyy-MM-dd HH:mm}");
-
-            bool success = cardReader.CreateGuestCard(roomNumber, guestName, guestId, startTime, endTime);
-
-            if (success)
-            {
-                LogMessage("? Guest card created successfully");
-                LogMessage("Please remove the card from the reader");
-            }
-            else
-            {
-                LogMessage("? Failed to create guest card");
-                LogMessage("Please check:");
-                LogMessage("- A blank card is inserted in the reader");
-                LogMessage("- The card is compatible with the lock system");
-                LogMessage("- The room number is valid");
-            }
+            bool success = cardReader.CreateGuestCard(roomNumber, guestName, "", startTime, endTime);
+            LogMessage(success ? "✓ Guest card created successfully" : "✗ Failed to create guest card");
         }
         catch (Exception ex)
         {
-            LogMessage($"? Error creating card: {ex.Message}");
+            HandleException("card creation", ex);
         }
     }
 
-    private void btnEraseCard_Click(object sender, EventArgs e)
+    private void btnTestAllSystems_Click(object sender, EventArgs e)
     {
         try
         {
-            LogMessage("Erasing card...");
+            LogMessage("🔍 TESTING A90 AND A92 WITH SERVER AUTHENTICATION");
+            LogMessage("Server: DESKTOP-ILHONN0, User: EFD4DCC8D485F8");
+            LogMessage("Port: 0, Encoder: Manual, TM Encoder: 1");
             
-            bool success = cardReader.EraseCard(); // 0 = automatically read card number and erase
+            // Test A90 with server authentication
+            LogMessage("\n🎯 Testing A90 Lock System...");
+            var (a90Success, a90CardInfo, a90Log) = cardReader.TestA90WithServerAuth();
             
-            if (success)
+            // Show A90 test log
+            var a90Lines = a90Log.Split('\n');
+            foreach (var line in a90Lines)
             {
-                LogMessage("? Card erased successfully");
+                if (!string.IsNullOrWhiteSpace(line))
+                    LogMessage(line.Trim());
+            }
+            
+            if (a90Success && a90CardInfo != null)
+            {
+                LogMessage("\n🎉 A90 SUCCESS! Card reading works with server authentication!");
+                DisplayCardInfo(a90CardInfo);
+                UpdateFormFields(a90CardInfo);
+                LogMessage("✅ Use A90 lock system for future operations");
+                return;
+            }
+            
+            // Test A92 with server authentication
+            LogMessage("\n🎯 Testing A92 Lock System...");
+            var (a92Success, a92CardInfo, a92Log) = cardReader.TestA92WithServerAuth();
+            
+            // Show A92 test log
+            var a92Lines = a92Log.Split('\n');
+            foreach (var line in a92Lines)
+            {
+                if (!string.IsNullOrWhiteSpace(line))
+                    LogMessage(line.Trim());
+            }
+            
+            if (a92Success && a92CardInfo != null)
+            {
+                LogMessage("\n🎉 A92 SUCCESS! Card reading works with server authentication!");
+                DisplayCardInfo(a92CardInfo);
+                UpdateFormFields(a92CardInfo);
+                LogMessage("✅ Use A92 lock system for future operations");
+                return;
+            }
+            
+            // Summary if both failed
+            LogMessage("\n❌ BOTH A90 AND A92 TESTS COMPLETED");
+            LogMessage("\n🔍 SUMMARY:");
+            
+            if (!a90Success && !a92Success)
+            {
+                LogMessage("✗ A90 initialization failed");
+                LogMessage("✗ A92 initialization failed");
+                LogMessage("\n💡 POSSIBLE ISSUES:");
+                LogMessage("1. Server 'DESKTOP-ILHONN0' not accessible");
+                LogMessage("2. Username 'EFD4DCC8D485F8' not valid or encrypted");
+                LogMessage("3. SQL Server service not running");
+                LogMessage("4. Database permissions issue");
+                LogMessage("5. Network connectivity problem");
             }
             else
             {
-                LogMessage("? Failed to erase card");
-                LogMessage("Please ensure a card is properly positioned in the reader");
+                LogMessage("ℹ️ Initialization succeeded but card reading failed");
+                LogMessage("Check:");
+                LogMessage("1. Card is inserted properly");
+                LogMessage("2. Card type matches the lock system");
+                LogMessage("3. Card is not expired or damaged");
             }
         }
         catch (Exception ex)
         {
-            LogMessage($"? Error erasing card: {ex.Message}");
+            HandleException("A90/A92 server authentication testing", ex);
         }
     }
+    #endregion
 
-    private int GetSelectedLockSystem()
+    #region Helper Methods
+    private void DisplayCardInfo(AdelCardReader.CardInfo cardInfo)
     {
-        return cmbLockSystem.SelectedIndex switch
-        {
-            0 => AdelCardReader.A90,      // A90
-            1 => AdelCardReader.A92,      // A92
-            2 => AdelCardReader.A30,      // A30
-            3 => AdelCardReader.LOCK9200T, // Lock9200T
-            4 => AdelCardReader.LOCK3200K, // Lock3200K
-            _ => AdelCardReader.A90        // Default
-        };
+        LogMessage("✓ Card Information:");
+        LogMessage($"  Room Number: {cardInfo.Room}");
+        LogMessage($"  Guest Name: {cardInfo.GuestName}");
+        LogMessage($"  Guest ID: {cardInfo.GuestId}");
+        LogMessage($"  Card Number: {cardInfo.CardNumber}");
+        LogMessage($"  Valid From: {cardInfo.StartTime}");
+        LogMessage($"  Valid Until: {cardInfo.EndTime}");
+        LogMessage($"  Status: {GetCardStatusDescription(cardInfo.Status)}");
+        LogMessage($"  Track 1: {cardInfo.Track1}");
+        LogMessage($"  Track 2: {cardInfo.Track2}");
     }
 
-    private string GetCardStatusDescription(int status)
+    private void UpdateFormFields(AdelCardReader.CardInfo cardInfo)
     {
-        return status switch
-        {
-            1 => "Normal use",
-            3 => "Normal logout",
-            4 => "Lost logout",
-            5 => "Destroy logout",
-            6 => "Auto logout",
-            _ => $"Unknown status ({status})"
-        };
+        txtRoomNumber.Text = cardInfo.Room;
+        txtGuestName.Text = cardInfo.GuestName;
+    }
+
+    private void UpdateStatus(string status, Color color)
+    {
+        lblStatus.Text = $"Status: {status}";
+        lblStatus.ForeColor = color;
+    }
+
+    private void HandleException(string operation, Exception ex)
+    {
+        LogMessage($"✗ Error in {operation}: {ex.Message}");
+        LogMessage($"Exception type: {ex.GetType().Name}");
+        UpdateStatus("Exception", Color.Red);
+        EnableCardOperations(false);
     }
 
     private void EnableCardOperations(bool enabled)
     {
+        // Enable/disable all card operation buttons
         btnReadCard.Enabled = enabled;
         btnCreateCard.Enabled = enabled;
-        btnEraseCard.Enabled = enabled;
+        btnReadCardDirect.Enabled = enabled;
+        btnTestReadCardId.Enabled = enabled;
+        btnTestReadMagCard.Enabled = enabled;
+        btnTestReadIC.Enabled = enabled;
+        btnTestGetCardInfo.Enabled = enabled;
+        btnTestReaderBeep.Enabled = enabled;
+        btnTestAllSystems.Enabled = enabled;
+        btnTestAuth.Enabled = enabled; // This is our "Change User to Admin" button
     }
+
+
+    private int GetSelectedLockSystem() => cmbLockSystem.SelectedIndex switch
+    {
+        0 => AdelCardReader.A90,
+        1 => AdelCardReader.A92,
+        2 => AdelCardReader.A30,
+        3 => AdelCardReader.LOCK9200T,
+        4 => AdelCardReader.LOCK3200K,
+        _ => AdelCardReader.A90
+    };
+
+    private string GetCardStatusDescription(int status) => status switch
+    {
+        1 => "Normal use",
+        3 => "Normal logout",
+        4 => "Lost logout",
+        5 => "Destroy logout",
+        6 => "Auto logout",
+        _ => $"Unknown status ({status})"
+    };
 
     private void LogMessage(string message)
     {
-        txtOutput.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}\r\n");
+        string timestamp = DateTime.Now.ToString("HH:mm:ss");
+        txtOutput.AppendText($"[{timestamp}] {message}\r\n");
         txtOutput.ScrollToCaret();
+        Application.DoEvents();
     }
 
-    private void btnRefreshPorts_Click(object sender, EventArgs e)
+    private void btnClearLog_Click(object sender, EventArgs e)
     {
-        LogMessage("Refreshing COM ports...");
-        PopulateComPorts();
+        txtOutput.Clear();
+        LogMessage("Log cleared");
     }
+    #endregion
 
-    private bool IsRunningAsAdministrator()
-    {
-        try
-        {
-            var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
-            var principal = new System.Security.Principal.WindowsPrincipal(identity);
-            return principal.IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private void btnDiagnostics_Click(object sender, EventArgs e)
-    {
-        LogMessage("=== DIAGNOSTIC INFORMATION ===");
-        
-        // System information
-        LogMessage($"OS: {Environment.OSVersion}");
-        LogMessage($"Architecture: {Environment.Is64BitOperatingSystem} bit OS, {Environment.Is64BitProcess} bit process");
-        LogMessage($"User: {Environment.UserName} (Admin: {true})"); // Temporarily simplified
-        
-        // .NET COM port detection
-        try
-        {
-            string[] ports = System.IO.Ports.SerialPort.GetPortNames();
-            LogMessage($".NET SerialPort.GetPortNames(): {ports.Length} ports");
-            if (ports.Length > 0)
-                LogMessage($"  Ports: {string.Join(", ", ports)}");
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? .NET SerialPort.GetPortNames() failed: {ex.Message}");
-        }
-        
-        // Registry-based detection
-        try
-        {
-            LogMessage("Registry SERIALCOMM entries:");
-            using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"HARDWARE\DEVICEMAP\SERIALCOMM"))
-            {
-                if (key != null)
-                {
-                    foreach (string valueName in key.GetValueNames())
-                    {
-                        string? portName = key.GetValue(valueName)?.ToString();
-                        LogMessage($"  {valueName} -> {portName}");
-                    }
-                }
-                else
-                {
-                    LogMessage("  Registry key not found");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? Registry access failed: {ex.Message}");
-        }
-        
-        // WMI-based detection
-        try
-        {
-            LogMessage("WMI Win32_SerialPort entries:");
-            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT * FROM Win32_SerialPort"))
-            {
-                int count = 0;
-                foreach (System.Management.ManagementObject port in searcher.Get())
-                {
-                    count++;
-                    string deviceId = port["DeviceID"]?.ToString() ?? "N/A";
-                    string description = port["Description"]?.ToString() ?? "N/A";
-                    string name = port["Name"]?.ToString() ?? "N/A";
-                    string pnpDeviceId = port["PNPDeviceID"]?.ToString() ?? "N/A";
-                    
-                    LogMessage($"  Port {count}:");
-                    LogMessage($"    Device ID: {deviceId}");
-                    LogMessage($"    Description: {description}");
-                    LogMessage($"    Name: {name}");
-                    LogMessage($"    PnP Device ID: {pnpDeviceId}");
-                }
-                
-                if (count == 0)
-                    LogMessage("  No serial ports found via WMI");
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? WMI query failed: {ex.Message}");
-        }
-        
-        // Check for USB devices with driver issues
-        CheckUSBDeviceDriverStatus();
-        
-        // USB devices that might be card readers
-        try
-        {
-            LogMessage("USB devices (potential card readers):");
-            using (var searcher = new System.Management.ManagementObjectSearcher("SELECT * FROM Win32_PnPEntity WHERE Name LIKE '%USB%' OR Name LIKE '%Serial%' OR Name LIKE '%COM%'"))
-            {
-                int count = 0;
-                foreach (System.Management.ManagementObject device in searcher.Get())
-                {
-                    string name = device["Name"]?.ToString() ?? "N/A";
-                    string deviceId = device["DeviceID"]?.ToString() ?? "N/A";
-                    string status = device["Status"]?.ToString() ?? "N/A";
-                    
-                    if (name.ToLower().Contains("com") || name.ToLower().Contains("serial") || name.ToLower().Contains("usb"))
-                    {
-                        count++;
-                        LogMessage($"  USB Device {count}:");
-                        LogMessage($"    Name: {name}");
-                        LogMessage($"    Device ID: {deviceId}");
-                        LogMessage($"    Status: {status}");
-                    }
-                }
-                
-                if (count == 0)
-                    LogMessage("  No relevant USB devices found");
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? USB device query failed: {ex.Message}");
-        }
-        
-        LogMessage("=== END DIAGNOSTICS ===");
-    }
-
-    private void CheckUSBDeviceDriverStatus()
+    // Focused authentication test with ReadCard validation
+    private void btnTestAuth_Click(object sender, EventArgs e)
     {
         try
         {
-            LogMessage("Checking for devices with driver issues:");
+            if (!TestDLLLoading()) return;
             
-            // Check for devices with problems (missing drivers, etc.)
-            using (var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT * FROM Win32_PnPEntity WHERE ConfigManagerErrorCode != 0"))
-            {
-                int problemCount = 0;
-                foreach (System.Management.ManagementObject device in searcher.Get())
-                {
-                    problemCount++;
-                    string name = device["Name"]?.ToString() ?? "Unknown Device";
-                    string deviceId = device["DeviceID"]?.ToString() ?? "N/A";
-                    uint errorCode = Convert.ToUInt32(device["ConfigManagerErrorCode"] ?? 0);
-                    string status = device["Status"]?.ToString() ?? "N/A";
-                    
-                    LogMessage($"  ? Problem Device {problemCount}:");
-                    LogMessage($"    Name: {name}");
-                    LogMessage($"    Device ID: {deviceId}");
-                    LogMessage($"    Error Code: {errorCode} ({GetDeviceErrorDescription(errorCode)})");
-                    LogMessage($"    Status: {status}");
-                    
-                    // Check if this might be a USB-to-Serial device
-                    if (deviceId.ToUpper().Contains("USB") || deviceId.ToUpper().Contains("VID_") || 
-                        name.ToLower().Contains("serial") || name.ToLower().Contains("com"))
-                    {
-                        LogMessage($"    ? This appears to be a USB-to-Serial device with driver issues!");
-                    }
-                }
-                
-                if (problemCount == 0)
-                {
-                    LogMessage("  ? No devices with driver problems found");
-                }
-                else
-                {
-                    LogMessage($"  Found {problemCount} device(s) with driver issues");
-                    LogMessage("  To fix driver issues:");
-                    LogMessage("    1. Open Device Manager");
-                    LogMessage("    2. Look for devices with yellow warning triangles");
-                    LogMessage("    3. Right-click the device and select 'Update driver'");
-                    LogMessage("    4. Or download drivers from manufacturer's website");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? Driver status check failed: {ex.Message}");
-        }
-        
-        // Check for unknown devices
-        try
-        {
-            using (var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT * FROM Win32_PnPEntity WHERE Name LIKE '%Unknown%' OR Caption LIKE '%Unknown%'"))
-            {
-                int unknownCount = 0;
-                foreach (System.Management.ManagementObject device in searcher.Get())
-                {
-                    unknownCount++;
-                    string name = device["Name"]?.ToString() ?? "Unknown";
-                    string deviceId = device["DeviceID"]?.ToString() ?? "N/A";
-                    
-                    LogMessage($"  ? Unknown Device {unknownCount}: {name}");
-                    LogMessage($"    Device ID: {deviceId}");
-                }
-                
-                if (unknownCount > 0)
-                {
-                    LogMessage($"  Found {unknownCount} unknown device(s) - these may need drivers");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"? Unknown device check failed: {ex.Message}");
-        }
-    }
-
-    private string GetDeviceErrorDescription(uint errorCode)
-    {
-        return errorCode switch
-        {
-            0 => "No error",
-            1 => "Device not configured correctly",
-            3 => "Driver corrupted or missing",
-            10 => "Device cannot start",
-            18 => "Reinstall drivers for this device",
-            19 => "Registry returned unknown result",
-            21 => "Windows is removing this device",
-            22 => "Device is disabled",
-            24 => "Device not present, not working, or doesn't have all drivers installed",
-            28 => "Drivers not installed",
-            31 => "Device not working properly",
-            37 => "Windows cannot initialize the device driver",
-            39 => "Windows cannot load the device driver",
-            40 => "Windows cannot access this hardware",
-            41 => "Windows successfully loaded the device driver but cannot find the hardware device",
-            42 => "Windows cannot load the device driver because there is a duplicate device already running",
-            43 => "Windows has stopped this device because it has reported problems",
-            44 => "An application or service has shut down this hardware device",
-            45 => "Currently, this hardware device is not connected to the computer",
-            46 => "Windows cannot gain access to this hardware device",
-            47 => "Windows cannot use this hardware device because it has been prepared for safe removal",
-            48 => "Software for this device has been blocked from starting",
-            49 => "Windows cannot start new hardware devices because the system hive is too large",
-            _ => $"Error code {errorCode}"
-        };
-    }
-
-    private void btnCheckDrivers_Click(object sender, EventArgs e)
-    {
-        LogMessage("=== USB-TO-SERIAL DRIVER CHECK ===");
-        
-        // Check if any USB card reader might be connected
-        CheckForUSBCardReaders();
-        
-        // Provide driver installation guidance
-        LogMessage("");
-        LogMessage("?? DRIVER INSTALLATION GUIDE:");
-        LogMessage("");
-        LogMessage("If you have a USB card reader and no COM ports are detected:");
-        LogMessage("");
-        LogMessage("1?? IDENTIFY YOUR DEVICE:");
-        LogMessage("   � Open Device Manager (Windows + X ? Device Manager)");
-        LogMessage("   � Look for devices with yellow warning triangles");
-        LogMessage("   � Check 'Other devices' or 'Unknown devices' section");
-        LogMessage("   � Note the device name and hardware ID");
-        LogMessage("");
-        LogMessage("2?? COMMON USB-TO-SERIAL CHIPS:");
-        LogMessage("   � FTDI (FT232, FT234X): Download from ftdichip.com");
-        LogMessage("   � Prolific (PL2303): Download from prolific.com.tw");
-        LogMessage("   � Silicon Labs (CP210x): Download from silabs.com");
-        LogMessage("   � CH340/CH341: Search for 'CH340 driver download'");
-        LogMessage("");
-        LogMessage("3?? AUTOMATIC DRIVER INSTALLATION:");
-        LogMessage("   � Connect your USB card reader");
-        LogMessage("   � Windows may install drivers automatically");
-        LogMessage("   � Wait 2-3 minutes for Windows Update to check");
-        LogMessage("");
-        LogMessage("4?? MANUAL DRIVER INSTALLATION:");
-        LogMessage("   � Right-click the unknown device in Device Manager");
-        LogMessage("   � Select 'Update driver'");
-        LogMessage("   � Choose 'Search automatically for drivers'");
-        LogMessage("   � Or 'Browse my computer' if you downloaded drivers");
-        LogMessage("");
-        LogMessage("5?? VERIFY INSTALLATION:");
-        LogMessage("   � After installation, check Device Manager");
-        LogMessage("   � Look for 'Ports (COM & LPT)' section");
-        LogMessage("   � You should see a new COM port (e.g., COM3, COM4)");
-        LogMessage("   � Click 'Refresh' button in this application");
-        LogMessage("");
-        LogMessage("?? TROUBLESHOOTING TIPS:");
-        LogMessage("   � Try different USB ports");
-        LogMessage("   � Use USB 2.0 ports instead of USB 3.0");
-        LogMessage("   � Restart computer after driver installation");
-        LogMessage("   � Run this application as Administrator");
-        LogMessage("   � Disable antivirus temporarily during driver installation");
-        LogMessage("");
-        LogMessage("?? For more help, click 'Diagnostics' button for detailed system info");
-        LogMessage("=== END DRIVER CHECK ===");
-    }
-
-    private void CheckForUSBCardReaders()
-    {
-        try
-        {
-            LogMessage("Scanning for connected USB devices...");
+            LogMessage("👤 Changing user name to \"admin\"...");
             
-            using (var searcher = new System.Management.ManagementObjectSearcher(
-                "SELECT * FROM Win32_PnPEntity WHERE DeviceID LIKE '%USB%'"))
-            {
-                int usbDeviceCount = 0;
-                int possibleCardReaders = 0;
-                
-                foreach (System.Management.ManagementObject device in searcher.Get())
-                {
-                    usbDeviceCount++;
-                    string name = device["Name"]?.ToString() ?? "";
-                    string deviceId = device["DeviceID"]?.ToString() ?? "";
-                    string status = device["Status"]?.ToString() ?? "";
-                    uint errorCode = Convert.ToUInt32(device["ConfigManagerErrorCode"] ?? 0);
-                    
-                    // Check if this might be a card reader or serial device
-                    bool mightBeCardReader = 
-                        name.ToLower().Contains("card") ||
-                        name.ToLower().Contains("reader") ||
-                        name.ToLower().Contains("serial") ||
-                        name.ToLower().Contains("com") ||
-                        name.ToLower().Contains("adel") ||
-                        deviceId.ToUpper().Contains("VID_0403") || // FTDI
-                        deviceId.ToUpper().Contains("VID_067B") || // Prolific
-                        deviceId.ToUpper().Contains("VID_10C4") || // Silicon Labs
-                        deviceId.ToUpper().Contains("VID_1A86");   // CH340/CH341
-                    
-                    if (mightBeCardReader)
-                    {
-                        possibleCardReaders++;
-                        LogMessage($"?? Possible card reader found:");
-                        LogMessage($"   Name: {name}");
-                        LogMessage($"   Status: {status}");
-                        LogMessage($"   Device ID: {deviceId}");
-                        
-                        if (errorCode != 0)
-                        {
-                            LogMessage($"   ? Error: {GetDeviceErrorDescription(errorCode)}");
-                            LogMessage($"   ?? This device needs driver installation!");
-                        }
-                        else
-                        {
-                            LogMessage($"   ? Device appears to be working");
-                        }
-                        LogMessage("");
-                    }
-                }
-                
-                LogMessage($"?? Summary: {usbDeviceCount} USB devices, {possibleCardReaders} possible card readers");
-                
-                if (possibleCardReaders == 0)
-                {
-                    LogMessage("? No obvious USB card readers detected");
-                    LogMessage("   � Make sure your card reader is connected");
-                    LogMessage("   � Try a different USB cable or port");
-                    LogMessage("   � Check if the card reader has a power switch");
-                }
-            }
+            // Call the ChangeUser function with "admin" as the username
+            AdelCardReader.ChangeUser("admin");
+            
+            LogMessage("✅ User successfully changed to \"admin\"");
+            LogMessage("The lock system will now record operations with this username");
         }
         catch (Exception ex)
         {
-            LogMessage($"? USB device scan failed: {ex.Message}");
+            HandleException("changing user", ex);
         }
     }
 
-    protected override void OnFormClosed(FormClosedEventArgs e)
+    // ChangeUser button handler
+    private void btnChangeUser_Click(object sender, EventArgs e)
     {
-        cardReader?.Shutdown();
-        base.OnFormClosed(e);
+        try
+        {
+            if (!TestDLLLoading()) return;
+            
+            LogMessage("👤 Changing user name to \"admin\"...");
+            
+            // Call the ChangeUser function with "admin" as the username
+            AdelCardReader.ChangeUser("admin");
+            
+            LogMessage("✅ User successfully changed to \"admin\"");
+            LogMessage("The lock system will now record operations with this username");
+        }
+        catch (Exception ex)
+        {
+            HandleException("changing user", ex);
+        }
     }
 }

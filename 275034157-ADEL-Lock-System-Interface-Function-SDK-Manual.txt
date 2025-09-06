@@ -1,0 +1,324 @@
+ADEL Lock Interface Specifications
+
+Interface Function (SDK) Description of ADEL Lock System
+(MAINDLL.DLL Function Description)
+Applicable Lock System: V6.5 or above
+Ⅰ. Lock Function (Lock system must be installed and set)
+1. Initialization
+Function prototype:
+int Init(int software,char *server,char *username, int port, int Encoder, int TMEncoder);
+Parameter:
+software [in]: specify lock system. Refer to NOTE Ⅱ.
+server [in]: character pointer, specify name of SQL Server installed with database.
+username [in]: character pointer, user name, used for operators.
+Port [in]: serial port No., 1-COM1, 2-COM2, 3-COM3, 4-COM4, and so on.
+Encoder [in]: encoder type: 0-Manual Encoder, 1-Automatic Encoder, 2-MSR206
+(Magnetic Card)
+TMEncoder [in]: TM encoder type, 1-DS9097E, 5-DS9097U
+Return value: Refer to NOTE Ⅰ.
+
+2. EndSession
+Function prototype:
+int EndSession(void);
+Parameter: None
+Return value: Refer to NOTE Ⅰ.
+
+3. NewKey
+Erase the current guest card information. The previous guest card cannot be used again after
+the new issued guest card unlocks the door. Function prototype:
+int NewKey(char *room,char *gate,char *stime,char *guestname,char *guestid, int
+overflag, long *cardno,char * track1,char * track2);
+Parameter:
+room [in]: room number, 6-byte character string, must be set by lock system.
+gate [in]: common gate, string parameter, “00” stands for default authorization, “99”
+stands for authorization for all, and others are specified gate codes, e.g., “010203” stands for
+authorization for gate 01, 02, and 03.
+Stime [in]: starting and ending time, 24-byte character string. The format is
+yyyymmddhhnnyyyymmddhhnn, e.g., “200012311230200101011230” stands for the time period
+from 12:30, Dec. 31, 2000 to 12:30, Jan. 1, 2001. Lock9200: starting time and ending time cannot
+be in the same day or more than 1 month.
+Guestname [in]: guest name, maximum: 30 bytes, can be NULL.
+Guestid [in]: guest ID, maximum: 30 bytes, can be NULL.
+Overflag [in]: integer, whether to overwrite current card information: 1-to overwrite,
+erased automatically if the current card is not a new card (for guest card); 0-not to overwrite, back
+if the card is not a new card. For magnetic card (manual encoder), ignore this parameter and
+overwrite directly without erasing automatically.
+Cardno [out]: long integer pointer, receive card number (the only card code distributed
+1
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+ADEL Lock Interface Specifications
+after issuing the card), can be NULL.
+track1 [in]: character string pointer, track 1 data of magnetic card, can be NULL if it’s
+not written.
+track2 [in]: character string pointer, track 2 data of magnetic card, can be NULL if it’s
+not written.
+Return value: Refer to NOTE Ⅰ.
+
+4. DupKey
+Both new guest card and old guest card can be used simultaneously, and the starting time is the
+same. Function prototype:
+int DupKey(char *room,char *gate,char *stime,char *guestname,char *guestid, int
+overflag, long *cardno,char * track1,char * track2);
+Parameter:
+room [in]: room number, 6-byte character string, must be set by lock system.
+gate [in]: common gate, string parameter, “00” stands for default authorization, “99”
+stands for authorization for all, and others are specified gate codes, e.g., “010203” stands for
+authorization for gate 01, 02, and 03.
+Stime [in]: starting and ending time, 24-byte character string. The format is
+yyyymmddhhnnyyyymmddhhnn, e.g., “200012311230200101011230” stands for the time period
+from 12:30, Dec. 31, 2000 to 12:30, Jan. 1, 2001. The starting time is the same with the one of
+current guest card in use.
+Guestname [in]: guest name, maximum: 30 bytes, can be NULL.
+Guestid [in]: guest ID, maximum: 30 bytes, can be NULL.
+Overfla [in]: integer, whether to overwrite current card information: 1-to overwrite,
+erased automatically if the current card is not a new card (for guest card); 0-not to overwrite, back
+if the card is not a new card. For magnetic card (manual encoder), ignore this parameter and
+overwrite directly without erasing automatically.
+Cardno [out]: long integer pointer, receive card number (the only card code distributed
+after issuing the card), can be NULL.
+track1 [in]: character string pointer, track 1 data of magnetic card, can be NULL if it’s
+not written.
+track2 [in]: character string pointer, track 2 data of magnetic card, can be NULL if it’s
+not written.
+Return value: Refer to NOTE Ⅰ.
+
+5. ReadCard
+Function prototype:
+int ReadCard(char *room, char *gate,char *stime, char *guestname, char *guestid, char
+*track1, char *track2, long *cardno, int *st);
+Parameter:
+room [out]: character string pointer, receive returned room number, 10 bytes
+recommended.
+gate [out]: character string pointer, receive returned authorized common gates, can be
+NULL.
+Guestname [out]: character string pointer, receive returned guest name, can be NULL.
+Guestid [out]: character string pointer, receive returned guest ID, can be NULL.
+2
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+ADEL Lock Interface Specifications
+track1 [out]: receive track 1 data of magnetic card, can be NULL.
+track2 [out]: receive track 2 data of magnetic card, can be NULL.
+Cardno [out]: long integer pointer, receive returned card number, can be NULL.
+St [out]: integer pointer, receive returned card status: 1-normally used, 3-normally
+erased, 4-lost, 5-damaged, 6-automatically erased, can be NULL.
+Return value: Refer to NOTE Ⅰ.
+
+6. EraseCard
+Erase card and update database simultaneously. Function prototype:
+int EraseCard (long cardno,char * track1,char * track2);
+Parameter:
+cardno [in]: card number, can be 0. When the parameter is 0: IC card, RF card, TM card,
+and magnetic card (automatic encoder) read and erase card number automatically and update
+database simultaneously; magnetic card (manual encoder) erases current card information but not
+update database. It’s recommended to call CheckOut function to update database or call EraseCard
+after reading card number.
+track1 [in]: character string pointer, track 1 data of magnetic card, must be NULL if it’s
+not written.
+track2 [in]: character string pointer, track 2 data of magnetic card, must be NULL if it’s
+not written.
+Return value: Refer to NOTE Ⅰ.
+
+7. CheckOut
+Update database only without erasing card. Function prototype:
+int CheckOut (char *room, long cardno);
+Parameter:
+room [in]: room number.
+Cardno [in]: card number, can be 0. When the parameter is 0, mark all guest cards as
+normally erased.
+Return value: Refer to NOTE Ⅰ.
+
+8. LostCard
+Update database only without erasing card. Function prototype:
+int Lostcard (char *room, long cardno);
+Parameter:
+room [in]: room number.
+Cardno [in]: card number, marked as the card number of lost guest card.
+Return value: Refer to NOTE Ⅰ.
+
+Ⅱ. Public Function (Used with Lock Interface or independently)
+9. PopCard
+Function prototype:
+int PopCard(void);
+Parameter: None
+Return value: Refer to NOTE Ⅰ. When used independently, value 20 stands for “Do not call
+SetPort”.
+
+10. SetPort
+It’s unnecessary to call this function after calling Init function. Function prototype:
+3
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+ADEL Lock Interface Specifications
+int SetPort(int software,int port, int encoder, int tmencoder);
+Parameter:
+software [in]: specify lock system. Refer to NOTE Ⅱ.
+Port [in]: serial port number, integer, 1-COM1, 2-COM2, 3-COM3, 4-COM4, and so on.
+Encoder [in]: encoder type: 0-Manual Encoder, 1-Automatic Encoder.
+TMEncoder [in]: TM encoder type: 1-DS9097E, 5-DS9097U。
+Return value: Refer to NOTE Ⅰ.
+
+11. CheckSC (Lock3200K, Adel3200 Available)
+Verify password of 4442 card. Function prototype:
+int CheckSC(unsigned char *sc);
+Parameter:
+sc [in]: password of IC card, 3-byte unsigned character pointer.
+Return value: Refer to NOTE Ⅰ.
+
+12. ReadIC (Lock3200K, Lock4200D, Lock7200D, Adel3200, Adel9200 Available)
+Read data of 4442/14512 card. Function prototype:
+int ReadIC(unsigned int start, unsigned int len, unsigned char *str);
+Parameter:
+start [in]: start address, specify location to write data. For Mifare card (Adel9200), the start
+address consists of two bytes: high byte is block number, and low byte is area code, e.g., 0x0102
+stands for reading block 1, area 2.
+Len [in]: data length. For Mifare card (Adel9200), the length is integer multiple of 16.
+str [in，out]: unsigned character pointer, receive the read data and transmit password of
+reading sector for Mifare card (Adel9200). The password consists of 7 bytes: the first byte is
+authorization code; verify A password if the authorization code is 0; verify B password if the
+authorization code is 1. The remaining 6 bytes are password.
+Return value: Refer to NOTE Ⅰ.
+
+13. WriteIC (Lock3200K, Lock4200D, Lock7200D, Adel3200, Adel9200
+Available)
+Write data into 4442/14512 card (Lock3200K: storage area after 0x80 is recommended).
+Function prototype:
+int WriteIC(unsigned int start, unsigned int len, unsigned char *str);
+Parameter:
+start [in]: start address, specify location to write data; for Mifare card (Adel9200), the
+start address consists of two bytes: high byte is block number, and low byte is area code, e.g.,
+0x0102 stands for reading block 1, area 2.
+Len [in]: data length. For Mifare card (Adel9200), the length is integer multiple of 16.
+Str [in]: unsigned character pointer, write data into IC card and transmit password of
+reading sector for Mifare card (Adel9200). The password consists of 7 bytes: the first byte is
+authorization code; verify A password if the authorization code is 0; verify B password if the
+authorization code is 1. The remaining 6 bytes are password, and bytes from the eighth byte are
+written data.
+Return value: Refer to NOTE Ⅰ.
+
+14. WriteMagCard
+It’s highly recommended to store data in track 1 and track 2 and use track 3 for lock system.
+4
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+ADEL Lock Interface Specifications
+Function prototype:
+int WriteMagCard(char *track1, char * track2, char * track3);
+Parameter:
+track1 [in]: character string pointer, track 1 data of magnetic card, must be NULL if it’s
+not written.
+track2 [in]: character string pointer, track 2 data of magnetic card, must be NULL if it’s
+not written.
+track3 [in]: character string pointer, track 3 data of magnetic card, must be NULL if it’s
+not written.
+Return value: Refer to NOTE Ⅰ.
+
+15. ReadMagCard
+Function prototype:
+int ReadMagCard(char * track1, char * track2, char * track3);
+Parameter:
+track1 [out]: character string pointer, receive track 1 data of magnetic card, can be NULL
+if it’s not read.
+track2 [out]: character string pointer, receive track 2 data of magnetic card, can be NULL
+if it’s not read.
+track3 [out]: character string pointer, receive track 3 data of magnetic card, can be NULL
+if it’s not read.
+Return value: Refer to NOTE Ⅰ.
+
+Ⅲ. Functions of Network Energy Saver
+16. GetCardInfo
+Function prototype:
+int GetCardInfo(unsigned char *buff,int len,int *cardtype,int *cardst,int *cardno,char
+*roomno,char *username);
+Parameter:
+buff [in]: unsigned character pointer, card data.
+len [in]: data length (Byte)
+cardtype[out]: integer pointer, receive card type: 1-System card, 2-Layer card,
+3-Program card, 4-Master card, 5-Clock card, 6-Foreman card, 7-Floor card, 8-Maid card, 9-Guest
+card, 10- Lockout card, 11-Meeting card, 12-Emergency card, 13-Inhibit card, 14-Spare card, can
+be NULL。
+cardst[out]: integer pointer, receive card status: 1-Normal, 3-Erased, 4-Lost, 5-Damaged,
+6-Expired; can be NULL。
+cardno[out]: integer pointer, receive card number, can be NULL。
+roomno[out]: character pointer, receive room number of guest card or spare card, not less
+than 8 bytes, can be NULL.
+username[out]: character pointer, receive guest name, not less than 20 bytes, can be
+NULL.
+Return value: Refer to NOTE Ⅰ.
+
+5
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+ADEL Lock Interface Specifications
+
+NOTE:
+Ⅰ. Function Return Value:
+0-Operation succeeds
+1-Read and write error/Data error
+2-Damaged card
+3-No card
+4-Serial port error
+5-Replaced card
+6-Not a new card
+7-New card
+8-Invalid card
+9-Not a guest card
+10-Not a member card
+11-Wrong password
+12-No unlocking records
+13-Incorrect card type
+14-Parameter error
+15-Canceled by pressing ESC
+16-Time out
+17-Card error
+18-Blank card or card error
+19-Reserved
+20-Please call Init function first
+21-The version of the lock system is unavailable
+22-Failed to connect to database 23-Lock parameter not exist
+24-Failed to initialize
+25-No guest/Specified guest not exist
+26-Guest room full
+27-No records of the card
+28-Please call SetPort function first 29-Invalid room number
+30-Incorrect time range
+31-Failed to register the existing card number (Lock9200)
+32-Unavailable to call
+33-Invalid authorization code
+Ⅱ. Lock System Constants:
+Lock3200-1
+Lock3200K-2
+Lock6200-6
+Lock7200-7
+A30-11
+
+A50-14 A90-18
+
+Lock4200-3
+Lock7200D-8
+Lock611-19
+
+Lock4200D-4
+Lock9200-9
+Lock612D-20
+
+Lock5200-5
+Lock9200T-10
+A92-22
+
+Ⅲ. Operating Environment: 32-bit Windows operating system, and MDAC is required for
+lock function.
+Ⅳ. Call Mode: follow the Windows API call standard, i.e., stdcall.
+Ⅴ. Parameter Description: [in] input parameter, [out] output parameter.
+
+6
+
+Shenzhen Ideal Microelectronics Co., Ltd.
+
+
